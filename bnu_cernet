@@ -1,0 +1,866 @@
+#!/usr/bin/env python3
+'''
+北京师范大学校园网命令行客户端
+BNU CERNET Command Line Client
+
+Version: 0.1.0
+Author: Zhaoji Wang <zhaoji.wang@mail.bnu.edu.cn>
+Last Update: July 3, 2023
+'''
+
+import argparse
+import ctypes
+import getpass
+import hashlib
+import hmac
+import json
+import math
+import re
+import sys
+import time
+from base64 import b64encode
+from getpass import getpass
+from html.parser import HTMLParser
+# from typing import Any, Literal, TypedDict, cast
+from urllib.error import URLError
+from urllib.parse import urlencode, urljoin
+from urllib.request import HTTPRedirectHandler, build_opener, urlopen
+
+VERSION = '0.1.0'
+
+# ANSI escape codes for text colors
+GREEN = '\033[92m'
+RED = '\033[91m'
+YELLOW = '\033[93m'
+RESET = '\033[0m'
+
+# 如果是 Windows，启用 ANSI escape codes
+if sys.platform == 'win32':
+    kernel32 = ctypes.windll.kernel32
+    kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
+
+HOST = 'http://gw.bnu.edu.cn'
+PORTAL_URL = HOST
+API_STATUS_URL = HOST + '/cgi-bin/rad_user_info'
+API_TOKEN_URL = HOST + '/cgi-bin/get_challenge'
+API_RUN_URL = HOST + '/cgi-bin/srun_portal'
+FAKE_CALLBACK_NAME = 'fakeCallback'
+
+
+class TokenRetrievalError(Exception):
+    '''获取 Token 失败的错误'''
+    pass
+
+
+class AuthError(Exception):
+    '''认证失败的错误'''
+    pass
+
+
+class StatusError(Exception):
+    '''获取状态失败的错误'''
+    pass
+
+
+# class ConfigPortal(TypedDict):
+#     AuthIP: str
+#     AuthIP6: str
+#     ServiceIP: str
+#     DoubleStackPC: bool
+#     DoubleStackMobile: bool
+#     AuthMode: bool
+#     CloseLogout: bool
+#     MacAuth: bool
+#     RedirectUrl: bool
+#     OtherPCStack: str
+#     OtherMobileStack: str
+#     MsgApi: str
+#     PublicSuccessPages: bool
+#     TrafficCarry: int
+#     UserAgreeSwitch: bool
+#     DialSwitch: bool
+#     MultiAuthSwitch: bool
+
+# class ConfigPriceList(TypedDict):
+#     Prices: str
+#     Default: str
+#     BalanceWarning: str
+
+# class Config(TypedDict):
+#     '''配置信息
+
+#     从 HTML 中解析 `<script>` 字段中的 `CONFIG` 变量得到。
+#     '''
+#     page: str
+#     acid: str
+#     ip: str
+#     nas: str
+#     mac: str
+#     url: str
+#     lang: str
+#     isIPV6: bool
+#     portal: ConfigPortal
+#     notice: str
+#     priceList: ConfigPriceList
+
+# class UserDevice(TypedDict):
+#     '''用户设备信息'''
+#     device: str
+#     platform: str
+
+# class UserInfo(TypedDict):
+#     '''用户信息'''
+#     ip: str
+#     mac: str
+#     domain: str
+#     username: str
+#     password: str
+
+# class PortalInfo(TypedDict):
+#     '''Portal 信息'''
+#     nasIp: str
+#     lang: str
+#     acid: str
+#     flowMode: int
+#     nowType: str
+#     ipv4: str
+#     ipv6: str
+#     doub: bool
+#     userDevice: UserDevice
+#     selfServiceIp: str
+#     noticeType: str
+
+# class APITokenResponse(TypedDict):
+#     '''获取 Token 的响应'''
+#     challenge: str
+#     client_ip: str
+#     ecode: int
+#     error: str
+#     error_msg: str
+#     expire: str
+#     online_ip: str
+#     res: str
+#     srun_ver: str
+#     st: int
+
+# class APIRunQueryDictLogin(TypedDict):
+#     '''认证请求的 Query 参数'''
+#     action: Literal['login']
+#     username: str
+#     password: str
+#     os: str
+#     name: str
+#     double_stack: int
+#     chksum: str
+#     info: str
+#     ac_id: str
+#     ip: str
+#     n: int
+#     type: int
+
+# class APIRunQueryDictLogout(TypedDict):
+#     '''注销请求的 Query 参数'''
+#     action: Literal['logout']
+#     username: str
+#     ip: str
+#     ac_id: str
+
+# class APIAuthResponseCommon(TypedDict):
+#     '''认证响应的公共部分'''
+#     client_ip: str
+#     ecode: int
+#     error: str
+#     srun_ver: str
+
+# class APIAuthResponseLoginOk(APIAuthResponseCommon):
+#     '''认证响应的登录成功部分'''
+#     ServerFlag: int
+#     ServicesIntfServerIP: str
+#     ServicesIntfServerPort: str
+#     access_token: str
+#     checkout_date: int
+#     error_msg: str
+#     online_ip: str
+#     ploy_msg: str
+#     real_name: str
+#     remain_flux: int
+#     remain_times: int
+#     res: str
+#     suc_msg: str
+#     sysver: str
+#     username: str
+#     wallet_balance: int
+
+# class APIAuthResponseIpAlreadyOnlineError(APIAuthResponseCommon):
+#     '''认证响应的 IP 已在线部分'''
+#     ServerFlag: int
+#     ServicesIntfServerIP: str
+#     ServicesIntfServerPort: str
+#     access_token: str
+#     checkout_date: int
+#     error_msg: str
+#     online_ip: str
+#     real_name: str
+#     remain_flux: int
+#     remain_times: int
+#     res: str
+#     suc_msg: str
+#     sysver: str
+#     username: str
+#     wallet_balance: int
+
+# class APIAuthResponseLoginError(APIAuthResponseCommon):
+#     '''认证响应的登录失败部分'''
+#     error_msg: str
+#     online_ip: str
+#     res: str
+#     st: int
+
+# class APIStatusResponseOnline(TypedDict):
+#     '''获取状态的响应（在线）'''
+#     ServerFlag: int
+#     add_time: int
+#     all_bytes: int
+#     billing_name: str
+#     bytes_in: int
+#     bytes_out: int
+#     checkout_date: int
+#     domain: str
+#     error: str
+#     group_id: str
+#     keepalive_time: int
+#     online_device_detail: str
+#     online_device_total: str
+#     online_ip: str
+#     online_ip6: str
+#     package_id: str
+#     pppoe_dial: str
+#     products_id: str
+#     products_name: str
+#     real_name: str
+#     remain_bytes: int
+#     remain_seconds: int
+#     sum_bytes: int
+#     sum_seconds: int
+#     sysver: str
+#     user_balance: float
+#     user_charge: int
+#     user_mac: str
+#     user_name: str
+#     wallet_balance: float
+
+# class APIStatusResponseOffline(TypedDict):
+#     '''获取状态的响应（离线）'''
+#     client_ip: str
+#     ecode: int
+#     error: str
+#     error_msg: str
+#     online_ip: str
+#     res: str
+#     srun_ver: str
+#     st: int
+
+# class APILogoutResponse(TypedDict):
+#     '''注销的响应'''
+#     client_ip: str
+#     ecode: int
+#     error: str
+#     error_msg: str
+#     online_ip: str
+#     res: str
+#     srun_ver: str
+
+
+class Utils:
+    '''The utility class'''
+
+    @staticmethod
+    # def query_dict_to_string(params: 'dict[str, Any] | TypedDict') -> str:
+    def query_dict_to_string(params):  # type: (dict) -> str
+        return urlencode({'callback': FAKE_CALLBACK_NAME, **params, '_': Utils.get_js_timestamp()})
+
+    @staticmethod
+    # def get_js_timestamp() -> int:
+    def get_js_timestamp():  # type: () -> int
+        return int(time.time() * 1000)
+
+    @staticmethod
+    # def get_formatted_date_and_time() -> str:
+    def get_formatted_date_and_time():  # type: () -> str
+        return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
+
+    @staticmethod
+    # def md5(password: str, token: str) -> str:
+    def md5(password, token):  # type: (str, str) -> str
+        return hmac.new(token.encode(), password.encode(), hashlib.md5).hexdigest()
+
+    @staticmethod
+    # def encode_user_info(info: dict, token: str) -> str:
+    def encode_user_info(info, token):  # type: (dict, str) -> str
+
+        # def encode(msg: str, key: str):
+        def encode(msg, key):  # type: (str, str) -> str
+
+            # def sencode(msg: str, key: bool) -> 'list[int]':
+            def sencode(msg, key):  # type: (str, bool) -> 'list[int]'
+
+                # def ordat(msg: str, idx: int) -> int:
+                def ordat(msg, idx):  # type: (str, int) -> int
+                    return ord(msg[idx]) if len(msg) > idx else 0
+
+                l = len(msg)
+                # pwd: 'list[int]' = []
+                pwd = []  # type: list[int]
+                for i in range(0, l, 4):
+                    pwd.append(
+                        ordat(msg, i) | ordat(msg, i + 1) << 8 | ordat(msg, i + 2) << 16 | ordat(msg, i + 3) << 24)
+                if key:
+                    pwd.append(l)
+                return pwd
+
+            # def lencode(msg: 'list[int]', key: bool) -> 'str | None':
+            def lencode(msg, key):  # type: ('list[int]', bool) -> 'str | None'
+                l = len(msg)
+                ll = (l - 1) << 2
+                if key:
+                    m = msg[l - 1]
+                    if m < ll - 3 or m > ll:
+                        return
+                    ll = m
+                msg_chars = [
+                    chr(msg[i] & 0xFF) + chr(msg[i] >> 8 & 0xFF) + chr(msg[i] >> 16 & 0xFF) + chr(msg[i] >> 24 & 0xFF)
+                    for i in range(l)
+                ]
+                return ''.join(msg_chars)[:ll] if key else ''.join(msg_chars)
+
+            if msg == '':
+                return ''
+            pwd = sencode(msg, True)
+            pwdk = sencode(key, False)
+            if len(pwdk) < 4:
+                pwdk = pwdk + [0] * (4 - len(pwdk))
+            n = len(pwd) - 1
+            z = pwd[n]
+            y = pwd[0]
+            c = 0x86014019 | 0x183639A0
+            m = 0
+            e = 0
+            p = 0
+            q = math.floor(6 + 52 / (n + 1))
+            d = 0
+            while 0 < q:
+                d = d + c & (0x8CE0D9BF | 0x731F2640)
+                e = d >> 2 & 3
+                p = 0
+                while p < n:
+                    y = pwd[p + 1]
+                    m = z >> 5 ^ y << 2
+                    m = m + ((y >> 3 ^ z << 4) ^ (d ^ y))
+                    m = m + (pwdk[(p & 3) ^ e] ^ z)
+                    pwd[p] = pwd[p] + m & (0xEFB8D130 | 0x10472ECF)
+                    z = pwd[p]
+                    p += 1
+                y = pwd[0]
+                m = z >> 5 ^ y << 2
+                m = m + ((y >> 3 ^ z << 4) ^ (d ^ y))
+                m = m + (pwdk[(p & 3) ^ e] ^ z)
+                pwd[n] = pwd[n] + m & (0xBB390742 | 0x44C6F8BD)
+                z = pwd[n]
+                q = q - 1
+            return lencode(pwd, False) or ''
+
+        class Base64:
+            STANDARD = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+            ALPHA = 'LVoJPiCN2R8G90yg+hmFHuacZ1OWMnrsSTXkYpUq/3dlbfKwv6xztjI7DeBE45QA'
+
+            @staticmethod
+            # def encode(raw_s: str) -> str:
+            def encode(raw_s):  # type: (str) -> str
+                trans = str.maketrans(
+                    Base64.STANDARD,
+                    Base64.ALPHA,
+                )
+                ret = b64encode(bytes(ord(i) & 0xFF for i in raw_s))
+                return ret.decode().translate(trans)
+
+        json_info = json.dumps(info, separators=(',', ':'))
+        return '{SRBX1}' + Base64.encode(encode(json_info, token))
+
+    @staticmethod
+    # def parse_jsonp_response(jsonp_res: str) -> 'dict[str, Any]':
+    def parse_jsonp_response(jsonp_res):  # type: (str) -> 'dict'
+        prefix = FAKE_CALLBACK_NAME + '('
+        start_index = jsonp_res.find(prefix) + len(prefix)
+        end_index = jsonp_res.rfind(')')
+        json_data = jsonp_res[start_index:end_index]
+        return json.loads(json_data)
+
+    @staticmethod
+    # def is_status_online(status: APIStatusResponseOnline | APIStatusResponseOffline) -> bool:
+    def is_status_online(status):  # type: (dict) -> bool
+        if 'error' in status and status['error'] == 'ok':
+            return True
+        return False
+
+    @staticmethod
+    # def is_status_offline(status: APIStatusResponseOnline | APIStatusResponseOffline) -> bool:
+    def is_status_offline(status):  # type: (dict) -> bool
+        if 'error' in status and status['error'] == 'not_online_error':
+            return True
+        return False
+
+
+class Portal:
+    # __config: Config
+
+    def __init__(self):
+        self.__config = self.__get_config()
+
+    @property
+    # def config(self) -> Config:
+    def config(self):  # type: () -> dict
+        return self.__config
+
+    @property
+    # def userDevice(self) -> UserDevice:
+    def userDevice(self):  # type: () -> dict
+        return {'device': 'Linux', 'platform': 'Linux'}
+
+    @property
+    # def portal_info(self) -> PortalInfo:
+    def portal_info(self):  # type: () -> dict
+        return self.__get_portal_info()
+
+    # def get_user_info(self, username: str, password: str) -> UserInfo:
+    def get_user_info(self, username, password):  # type: (str, str) -> dict
+        config = self.__config
+        # return UserInfo(
+        #     ip=config['ip'],
+        #     mac=config['mac'],
+        #     domain='',
+        #     username=username,
+        #     password=password,
+        # )
+        return {
+            'ip': config['ip'],
+            'mac': config['mac'],
+            'domain': '',
+            'username': username,
+            'password': password,
+        }
+
+    # def __get_portal_html(self) -> str:
+    def __get_portal_html(self):  # type: () -> str
+        '''获取北京师范大学认证网关入口页的 HTML 字符串
+
+        Returns:
+            str: 北京师范大学认证网关入口页的 HTML 字符串
+        '''
+
+        class RedirectParser(HTMLParser):
+
+            def __init__(self):
+                super().__init__()
+                self.redirect_url = None
+
+            def handle_starttag(self, tag, attrs):
+                if tag == 'meta':
+                    attrs_dict = dict(attrs)
+                    httpEquiv = attrs_dict.get('http-equiv')
+                    if httpEquiv is not None and httpEquiv.lower() == 'refresh':
+                        content = attrs_dict.get('content')
+                        if content is not None:
+                            url = content.split(';url=')[1]
+                            self.redirect_url = url
+
+        class RedirectHandler(HTTPRedirectHandler):
+
+            def http_error_302(self, req, fp, code, msg, headers):
+                return HTTPRedirectHandler.http_error_302(self, req, fp, code, msg, headers)
+
+        opener = build_opener(RedirectHandler())
+        response = opener.open(PORTAL_URL)
+        parser = RedirectParser()
+        parser.feed(response.read().decode('utf-8'))
+        redirect_url = parser.redirect_url
+        full_redirect_url = urljoin(response.url, redirect_url)
+        response = urlopen(full_redirect_url)
+        return response.read().decode('utf-8')
+
+    # def __get_config(self) -> Config:
+    def __get_config(self):  # type: () -> dict
+        html_text = self.__get_portal_html()
+        # 提取 config 部分
+        config_match = re.search(r'var\s+CONFIG\s*=\s*({.*?});', html_text, re.DOTALL)
+        if config_match is None:
+            raise ValueError('CONFIG 解析失败')
+        config_text = config_match[1]
+
+        # 替换 JavaScript 的布尔值和字符串
+        config_text = re.sub(r'([^"\r\n\s]+?)\s+:', r'"\1":', config_text)
+        config_text = re.sub(r'false', r'False', config_text)
+        config_text = re.sub(r'true', r'True', config_text)
+        config_text = re.sub(r'\|\|', r' or ', config_text)
+
+        # return Config(eval(config_text))
+        return eval(config_text)
+
+    # def __get_portal_info(self) -> PortalInfo:
+    def __get_portal_info(self):  # type: () -> dict
+        config = self.__config
+        # return PortalInfo(
+        #     nasIp=config['nas'],
+        #     lang=config['lang'],
+        #     acid=config['acid'],
+        #     flowMode=config['portal']['TrafficCarry'] if 'TrafficCarry' in config['portal'] else 1024,
+        #     nowType='ipv6' if config['isIPV6'] else 'ipv4',
+        #     ipv4=config['portal']['AuthIP'],
+        #     ipv6=config['portal']['AuthIP6'],
+        #     doub=False,
+        #     userDevice=self.userDevice,
+        #     selfServiceIp=config['portal']['ServiceIP'],
+        #     noticeType=config['notice'],
+        # )
+        return {
+            'nasIp': config['nas'],
+            'lang': config['lang'],
+            'acid': config['acid'],
+            'flowMode': config['portal']['TrafficCarry'] if 'TrafficCarry' in config['portal'] else 1024,
+            'nowType': 'ipv6' if config['isIPV6'] else 'ipv4',
+            'ipv4': config['portal']['AuthIP'],
+            'ipv6': config['portal']['AuthIP6'],
+            'doub': False,
+            'userDevice': self.userDevice,
+            'selfServiceIp': config['portal']['ServiceIP'],
+            'noticeType': config['notice'],
+        }
+
+    # def get_status(self) -> 'APIStatusResponseOnline | APIStatusResponseOffline':
+    def get_status(self):  # type: () -> dict
+        '''获取 IP 状态'''
+        ip = self.config['ip']
+        query_dict = {'ip': ip}
+        url = API_STATUS_URL + '?' + Utils.query_dict_to_string(query_dict)
+        try:
+            response = urlopen(url)
+            jsonp_resp = response.read().decode('utf-8')
+            resp = Utils.parse_jsonp_response(jsonp_resp)
+
+            # if Utils.is_status_online(cast(Any, resp)):
+            #     return APIStatusResponseOnline(**resp)
+            # elif Utils.is_status_offline(cast(Any, resp)):
+            #     return APIStatusResponseOffline(**resp)
+            if Utils.is_status_online(resp):
+                return resp
+            elif Utils.is_status_offline(resp):
+                return resp
+            else:
+                raise StatusError('Portal.get_status: 未预期的状态。\n服务器状态: ' + str(resp))
+
+        except URLError as e:
+            raise ConnectionError('Portal.get_status: 无法连接到服务器。URL 错误: ' + str(e)) from e
+
+        except Exception as e:
+            raise RuntimeError('Portal.get_status: 未预期的错误: ' + str(e)) from e
+
+    # def print_status(self, status: 'APIStatusResponseOnline | APIStatusResponseOffline | None' = None):
+    def print_status(self, status=None):  # type: (dict | None) -> None
+        '''打印 IP 状态
+
+        Args:
+            status (APIStatusResponseOnline | APIStatusResponseOffline | None, optional): IP 状态。默认为 None，此时会自动获取 IP 状态。
+        '''
+        if status is None:
+            status = self.get_status()
+        if Utils.is_status_online(status):
+            # status = cast(APIStatusResponseOnline, status)
+            print(GREEN + '🌐 IP 状态' + RESET, '在线')
+            print(GREEN + '👤 用户账号' + RESET, status['user_name'])
+            print(GREEN + '📈 已用流量' + RESET, str(round(status['sum_bytes'] / (1024**3), 2)) + ' GB')
+            hours = status['sum_seconds'] // 3600
+            minutes = (status['sum_seconds'] % 3600) // 60
+            seconds = status['sum_seconds'] % 60
+            print(GREEN + '⏳ 已用时长' + RESET, str(hours) + '小时' + str(minutes) + '分' + str(seconds) + '秒')
+            print(GREEN + '💵 账户余额' + RESET, round(status['user_balance'], 2))
+            print(GREEN + '📍 IP 地址' + RESET, status['online_ip'])
+            print(GREEN + '📖 产品名称' + RESET, status['products_name'])
+        elif Utils.is_status_offline(status):
+            # status = cast(APIStatusResponseOffline, status)
+            print(RED + '💤 IP 状态' + RESET, '离线')
+            print(RED + '📍 IP 地址' + RESET, status['online_ip'])
+        else:
+            print(RED + '🚫 无法解析状态信息。' + RESET)
+
+    def logout(self):
+        status = self.get_status()
+        if Utils.is_status_offline(status):
+            # 如果已经离线，则不需要注销
+            print(YELLOW + '💤 IP 状态为离线，无需注销' + RESET)
+            return
+        # status = cast(APIStatusResponseOnline, status)
+        ip = status['online_ip']
+        username = status['user_name']
+        ac_id = self.config['acid']
+        query_dict = {
+            'action': 'logout',
+            'username': username,
+            'ip': ip,
+            'ac_id': ac_id,
+        }
+        url = API_RUN_URL + '?' + Utils.query_dict_to_string(query_dict)
+        try:
+            response = urlopen(url)
+            jsonp_resp = response.read().decode('utf-8')
+            # resp = APILogoutResponse(**Utils.parse_jsonp_response(jsonp_resp))
+            resp = Utils.parse_jsonp_response(jsonp_resp)
+
+            if resp['error'] == 'ok' and resp['res'] == 'ok':
+                while True:
+                    status = self.get_status()
+                    if Utils.is_status_offline(status):
+                        break
+                    # formated current time
+                    current_time = time.localtime(time.time())
+                    t = time.strftime('%Y-%m-%d %H:%M:%S', current_time)
+                    print(YELLOW + '💤 IP 状态为在线，等待注销' + ' (' + t + ')' + RESET)
+                    time.sleep(1)
+                print(GREEN + '👤 用户账号', username, '已注销' + ' (' + Utils.get_formatted_date_and_time() + ')' + RESET)
+                print(GREEN + '📍 IP 地址', ip + RESET)
+
+        except URLError as e:
+            raise ConnectionError('Portal.logout: 无法连接到服务器。URL 错误: ' + str(e)) from e
+
+        except Exception as e:
+            raise RuntimeError('Portal.logout: 未预期的错误: ' + str(e)) from e
+
+
+class Authenticator:
+    # __user_info: UserInfo
+    # __portal_info: PortalInfo
+
+    # def __init__(self, user_info: UserInfo, portal_info: PortalInfo):
+    def __init__(self, user_info, portal_info):  # type: (dict, dict) -> None
+        self.__user_info = user_info
+        self.__portal_info = portal_info
+
+    @property
+    # def user_info(self) -> UserInfo:
+    def user_info(self):  # type: () -> dict
+        return self.__user_info
+
+    @property
+    # def portal_info(self) -> PortalInfo:
+    def portal_info(self):  # type: () -> dict
+        return self.__portal_info
+
+    def __get_token(self) -> str:
+        '''获取最新的 token。因为 token 有时效性，所以每次认证都需要获取最新的 token。'''
+        ip = self.user_info['ip']
+        params = {
+            'username': self.user_info['username'],
+            'ip': ip,
+        }
+        url = API_TOKEN_URL + '?' + Utils.query_dict_to_string(params)
+
+        try:
+            response = urlopen(url)
+            jsonp_resp: str = response.read().decode('utf-8')
+            # resp = APITokenResponse(**Utils.parse_jsonp_response(jsonp_resp))
+            resp = Utils.parse_jsonp_response(jsonp_resp)
+
+            if 'challenge' not in resp:
+                raise TokenRetrievalError('Authenticator.__get_token: 服务器响应无效，缺少 challenge 字段。\n服务器响应: ' + str(resp))
+
+            challenge = resp['challenge']
+            client_ip = resp['client_ip']
+            error = resp.get('error', '')
+            error_msg = resp.get('error_msg', '')
+            res = resp.get('res', '')
+
+            if error == 'ok' and res == 'ok' and client_ip == ip:
+                return challenge
+            if error_msg:
+                raise TokenRetrievalError('Authenticator.__get_token: ' + error_msg + '\n服务器响应: ' + str(resp))
+            raise TokenRetrievalError('Authenticator.__get_token: 无效的响应或发生错误。\n服务器响应: ' + str(resp))
+
+        except URLError as e:
+            raise TokenRetrievalError('Authenticator.__get_token: 无法连接到服务器: ' + str(e)) from e
+
+        except json.JSONDecodeError as e:
+            raise TokenRetrievalError('Authenticator.__get_token: 无法解析服务器响应。') from e
+
+        except Exception as e:
+            raise TokenRetrievalError('Authenticator.__get_token: 发生错误: ' + str(e)) from e
+
+    def login(self):
+        user_info = self.user_info
+        portal_info = self.portal_info
+        token = self.__get_token()
+        # 加密常量
+        TYPE = 1
+        N = 200
+        ENC = 'srun_bx1'
+
+        username = user_info['username']
+        password = user_info['password']
+        ip = user_info['ip']
+
+        ac_id = portal_info['acid']
+        nowType = portal_info['nowType']
+        ipv4 = portal_info['ipv4']
+        ipv6 = portal_info['ipv6']
+        host = ipv4 if nowType == 'ipv4' else ipv6
+
+        hmd5 = Utils.md5(password, token)
+        i = Utils.encode_user_info({
+            'username': username,
+            'password': password,
+            'ip': ip,
+            'acid': ac_id,
+            'enc_ver': ENC
+        }, token)
+
+        chksum_str = token + username + token + hmd5 + token + ac_id + token + ip + token + str(N) + token + str(
+            TYPE) + token + i
+        chksum = hashlib.sha1(chksum_str.encode()).hexdigest()
+
+        # authQueryDict = APIRunQueryDictLogin(
+        #     action='login',
+        #     username=username,
+        #     password='{MD5}' + hmd5,
+        #     os=portal_info['userDevice']['device'],
+        #     name=portal_info['userDevice']['platform'],
+        #     double_stack=0,
+        #     chksum=chksum,
+        #     info=i,
+        #     ac_id=ac_id,
+        #     ip=ip,
+        #     n=N,
+        #     type=TYPE,
+        # )
+        authQueryDict = {
+            'action': 'login',
+            'username': username,
+            'password': '{MD5}' + hmd5,
+            'os': portal_info['userDevice']['device'],
+            'name': portal_info['userDevice']['platform'],
+            'double_stack': 0,
+            'chksum': chksum,
+            'info': i,
+            'ac_id': ac_id,
+            'ip': ip,
+            'n': N,
+            'type': TYPE,
+        }
+
+        try:
+            # def __send_auth(authParams: dict[Unknown, Unknown]) -> (APIAuthResponseLoginOk | APIAuthResponseIpAlreadyOnlineError | APIAuthResponseLoginError)
+            resp = self.__authenticate(authQueryDict)
+        except URLError as e:
+            print(RED + '🚫 无法连接到服务器: ' + RESET + str(e))
+
+        except json.JSONDecodeError as e:
+            print(RED + '🚫 无法解析服务器响应。' + RESET)
+
+        except Exception as e:
+            print(RED + '🚫 发生错误: ' + RESET + str(e))
+
+    # def __authenticate(self, authQueryDict: APIRunQueryDictLogin) -> None:
+    def __authenticate(self, authQueryDict):  # type: (dict) -> None
+        url = API_RUN_URL + '?' + Utils.query_dict_to_string(authQueryDict)
+        response = urlopen(url)
+        jsonp_resp = response.read().decode('utf-8')
+        resp = Utils.parse_jsonp_response(jsonp_resp)
+
+        if resp['error'] == 'ok' and 'suc_msg' in resp and resp['suc_msg'] == 'login_ok':
+            # Handle login OK
+            # resp = APIAuthResponseLoginOk(**resp)
+            print(GREEN + '🎉 认证成功！' + ' (' + Utils.get_formatted_date_and_time() + ')' + RESET)
+            return
+        elif resp['error'] == 'ok' and 'suc_msg' in resp and resp['suc_msg'] == 'ip_already_online_error':
+            # Handle IP already online error
+            # resp = APIAuthResponseIpAlreadyOnlineError(**resp)
+            print(GREEN + '🤔 IP 已在线，无需重复认证。' + ' (' + Utils.get_formatted_date_and_time() + ')' + RESET)
+            return
+        elif resp['error'] == 'login_error':
+            # Handle login error
+            # resp = APIAuthResponseLoginError(**resp)
+            print(RED + '😭 认证失败，错误信息: ' + resp['error_msg'] + ' (' + Utils.get_formatted_date_and_time() + ')' + RESET)
+            return
+        raise AuthError('Authenticator.__send_auth: 无效的响应。\n服务器响应: ' + str(resp))
+
+
+if __name__ == '__main__':
+    # 创建命令行参数解析器
+    parser = argparse.ArgumentParser(description='北京师范大学校园网命令行客户端 (作者: Zhaoji Wang <zhaoji.wang@mail.bnu.edu.cn>)')
+    parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + VERSION)
+    subparsers = parser.add_subparsers(dest='command')
+
+    # 创建“login”子命令
+    login_parser = subparsers.add_parser('login', help='登录')
+    login_parser.add_argument('-u', '--username', type=str, help='用户账号')
+    login_parser.add_argument('-p', '--password', type=str, help='校园网登录密码')
+    # 创建“status”子命令
+    status_parser = subparsers.add_parser('status', help='查询 IP 状态')
+    # 创建“logout”子命令
+    logout_parser = subparsers.add_parser('logout', help='注销')
+
+    # 获取程序名称
+    prog = parser.prog
+    # 解析命令行参数
+    args = parser.parse_args()
+
+    if args.command == 'login':
+        # 使用颜色和 Emoji 提示
+        prompt_username = GREEN + '🔑 请输入用户账号: ' + RESET
+        prompt_password = GREEN + '🔒 请输入校园网登录密码: ' + RESET
+
+        # 获取用户名和密码
+        username: str = args.username or ''
+        password: str = args.password or ''
+        while not username:
+            username = input(prompt_username)
+        while not password:
+            password = getpass(prompt_password)
+        if not username or not password:  # 理论上不会出现这种情况
+            raise ValueError('用户名或密码不能为空')
+
+        portal = Portal()
+        user_info = portal.get_user_info(username, password)
+        authenticator = Authenticator(user_info, portal.portal_info)
+        authenticator.login()
+        print()
+        portal.print_status()
+    elif args.command == 'logout':
+        portal = Portal()
+        portal.logout()
+    elif args.command == 'status':
+        portal = Portal()
+        portal.print_status()
+    elif args.command is None:
+        THUMBS_UP = "\U0001F44D"
+        ROCKET = "\U0001F680"
+
+        # 打印帮助信息
+        parser.print_help()
+
+        # 打印示例
+        print()
+        print('调用示例:\n')
+        print('  ' + prog + GREEN + ' status' + RESET + '   ')
+        print('  ' + prog + GREEN + ' login' + RESET + '   ')
+        print('  ' + prog + GREEN + ' login' + RESET + ' [' + YELLOW + '-u' + RESET + ' 用户账号]' + ' [' + YELLOW + '-p' +
+              RESET + ' 校园网登录密码]' + '   ')
+        print('  ' + prog + GREEN + ' logout' + RESET + '   ')
+
+        # 添加额外的说明
+        print()
+        print('注意事项:\n')
+        print('  - 使用 ' + GREEN + 'status' + RESET + ' 命令会显示该 IP 当前的校园网连接状态')
+        print('  - 使用 ' + GREEN + 'login' + RESET + ' 命令将该 IP 连接到校园网')
+        print('      ' + YELLOW + '-u' + RESET + ' 后面跟的是你的用户账号，通常是学号（该参数可选）')
+        print('      ' + YELLOW + '-p' + RESET + ' 后面跟的是你的校园网登录密码（该参数可选）')
+        print('      ' + '如果不指定 ' + YELLOW + '-u' + RESET + ' 和 ' + YELLOW + '-p' + RESET + ' 参数，程序会提示你交互式输入账号和密码')
+        print('  - 使用 ' + GREEN + 'logout' + RESET + ' 命令会断开该 IP 当前的校园网连接')
+    else:
+        parser.print_help()
