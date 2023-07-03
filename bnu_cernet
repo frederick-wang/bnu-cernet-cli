@@ -796,12 +796,12 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + VERSION)
     subparsers = parser.add_subparsers(dest='command')
 
+    # 创建“status”子命令
+    status_parser = subparsers.add_parser('status', help='查询 IP 状态')
     # 创建“login”子命令
     login_parser = subparsers.add_parser('login', help='登录')
     login_parser.add_argument('-u', '--username', type=str, help='用户账号')
     login_parser.add_argument('-p', '--password', type=str, help='校园网登录密码')
-    # 创建“status”子命令
-    status_parser = subparsers.add_parser('status', help='查询 IP 状态')
     # 创建“logout”子命令
     logout_parser = subparsers.add_parser('logout', help='注销')
 
@@ -810,7 +810,10 @@ if __name__ == '__main__':
     # 解析命令行参数
     args = parser.parse_args()
 
-    if args.command == 'login':
+    if args.command == 'status':
+        portal = Portal()
+        portal.print_status()
+    elif args.command == 'login':
         # 使用颜色和 Emoji 提示
         prompt_username = GREEN + '🔑 请输入用户账号: ' + RESET
         prompt_password = GREEN + '🔒 请输入校园网登录密码: ' + RESET
@@ -834,13 +837,7 @@ if __name__ == '__main__':
     elif args.command == 'logout':
         portal = Portal()
         portal.logout()
-    elif args.command == 'status':
-        portal = Portal()
-        portal.print_status()
     elif args.command is None:
-        THUMBS_UP = "\U0001F44D"
-        ROCKET = "\U0001F680"
-
         # 打印帮助信息
         parser.print_help()
 
