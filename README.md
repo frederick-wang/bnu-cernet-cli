@@ -170,3 +170,9 @@ bnu_cernet logout
 👤 用户账号 XXXXXXXXXXXX 已注销 (2023-07-03 06:46:14)
 📍 IP 地址 XX.XX.XX.XX
 ```
+
+## 🔄 在线保持
+
+保持服务器校园网常在线。
+
+可参考该 Issue：[#1](https://github.com/frederick-wang/bnu-cernet-cli/issues/1)
