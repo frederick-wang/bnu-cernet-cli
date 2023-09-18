@@ -3,7 +3,7 @@
 北京师范大学校园网命令行客户端
 BNU CERNET Command Line Client
 
-Version: 0.1.1
+Version: 0.1.2
 Author: Zhaoji Wang <zhaoji.wang@mail.bnu.edu.cn>
 Last Update: July 3, 2023
 '''
@@ -26,7 +26,7 @@ from urllib.error import URLError
 from urllib.parse import urlencode, urljoin
 from urllib.request import HTTPRedirectHandler, build_opener, urlopen
 
-VERSION = '0.1.1'
+VERSION = '0.1.2'
 
 # ANSI escape codes for text colors
 GREEN = '\033[92m'
