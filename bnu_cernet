@@ -494,7 +494,7 @@ class Portal:
         config_match = re.search(r'var\s+CONFIG\s*=\s*({.*?});', html_text, re.DOTALL)
         if config_match is None:
             raise ValueError('CONFIG 解析失败')
-        config_text = config_match[1]
+        config_text = config_match.group(1)
 
         # 替换 JavaScript 的布尔值和字符串
         config_text = re.sub(r'([^"\r\n\s]+?)\s+:', r'"\1":', config_text)
@@ -653,7 +653,8 @@ class Authenticator:
     def portal_info(self):  # type: () -> dict
         return self.__portal_info
 
-    def __get_token(self) -> str:
+    # def __get_token(self) -> str:
+    def __get_token(self):  # type: () -> str
         '''获取最新的 token。因为 token 有时效性，所以每次认证都需要获取最新的 token。'''
         ip = self.user_info['ip']
         params = {
@@ -664,7 +665,7 @@ class Authenticator:
 
         try:
             response = urlopen(url)
-            jsonp_resp: str = response.read().decode('utf-8')
+            jsonp_resp = response.read().decode('utf-8')  # type: str
             # resp = APITokenResponse(**Utils.parse_jsonp_response(jsonp_resp))
             resp = Utils.parse_jsonp_response(jsonp_resp)
 
@@ -819,8 +820,8 @@ if __name__ == '__main__':
         prompt_password = GREEN + '🔒 请输入校园网登录密码: ' + RESET
 
         # 获取用户名和密码
-        username: str = args.username or ''
-        password: str = args.password or ''
+        username = args.username or ''  # type: str
+        password = args.password or ''  # type: str
         while not username:
             username = input(prompt_username)
         while not password:
