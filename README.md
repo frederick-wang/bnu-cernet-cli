@@ -24,7 +24,7 @@ BNU CERNET CLI 是一款专为北京师范大学校园网用户设计的命令�
 
 ### 安装步骤（Linux）
 
-1. 点击 [此处](https://ghproxy.com/https://github.com/frederick-wang/bnu-cernet-cli/archive/refs/heads/main.zip) 下载本 Git 仓库的压缩包（下载链接已通过 [GitHub Proxy](https://ghproxy.com/) 进行了代理加速）；
+1. 点击 [此处](https://ghfast.top/https://github.com/frederick-wang/bnu-cernet-cli/archive/refs/heads/main.zip) 下载本 Git 仓库的压缩包（下载链接已通过 [ghfast.top](https://ghfast.top/) 进行了代理加速）；
 2. 解压该压缩包，得到 `bnu_cernet` 文件；
 3. 将 `bnu_cernet` 文件放置到任意目录下；
 4. 在终端中进入该目录，执行以下命令为该文件添加可执行权限：
@@ -39,7 +39,7 @@ chmod +x bnu_cernet
 
 ### 安装步骤（Windows）
 
-1. 点击 [此处](https://ghproxy.com/https://github.com/frederick-wang/bnu-cernet-cli/archive/refs/heads/main.zip) 下载本 Git 仓库的压缩包（下载链接已通过 [GitHub Proxy](https://ghproxy.com/) 进行了代理加速）；
+1. 点击 [此处](https://ghfast.top/https://github.com/frederick-wang/bnu-cernet-cli/archive/refs/heads/main.zip) 下载本 Git 仓库的压缩包（下载链接已通过 [ghfast.top](https://ghfast.top/) 进行了代理加速）；
 2. 解压该压缩包，得到 `bnu_cernet` 文件；
 3. 将 `bnu_cernet` 文件放置到任意目录下；
 4. 在命令行中进入该目录，执行以下命令来运行该程序：
